@@ -304,17 +304,11 @@ export const updateStatsModel = async (
  * @param {int} userId - id of a specific user
  * @param {string} timezone - timezone of the user
  * @returns {Promise<boolean>} true/false
- */
-
-// TODO: Adjust it to custom quests 
+*/
 export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
   const [quests] = await db.query(
     `SELECT * FROM quests WHERE type IN ('main', 'side')`
   );
-//   SELECT *
-// FROM quests
-// WHERE type IN ('main', 'side')
-// AND (owner_user_id IS NULL OR owner_user_id = ?)
 
   if (!quests || quests.length === 0) {
     return false;
@@ -327,12 +321,17 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
 
   for (const quest of quests) {
     const [lastQuestRows] = await db.query(
-      `SELECT *
-        FROM user_quests
-        JOIN quests 
-        ON user_quests.quest_id = quests.quest_id
-        WHERE user_quests.user_id = ? AND user_quests.quest_id = ? 
-        ORDER BY user_quests.created_at DESC LIMIT 1`,
+      `SELECT 
+        uq.total_reps,
+        q.max_reps
+      FROM user_quests uq
+      JOIN quests q
+        ON uq.quest_id = q.quest_id
+      WHERE 
+        uq.user_id = ? 
+        AND uq.quest_id = ? 
+      ORDER 
+        BY uq.created_at DESC LIMIT 1`,
       [userId, quest.quest_id]
     );
 
@@ -350,7 +349,7 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
     }
     
     await db.query(
-      `INSERT INTO user_quests (user_id, quest_id, total_reps, created_at)
+      `INSERT IGNORE INTO user_quests (user_id, quest_id, total_reps, created_at)
       VALUES (?, ?, ?, ?)`,
       [userId, quest.quest_id, totalReps, assignedAt]
     );
@@ -405,12 +404,15 @@ export const checkQuestsAssignedToday = async (userId, timezone) => {
   const [rows] = await db.query(
     `
       SELECT 1
-      FROM user_quests 
-      WHERE user_id = ?
-      AND DATE(CONVERT_TZ(created_at, 'UTC', ?)) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))
+      FROM user_quests uq
+      JOIN quests q
+      ON uq.quest_id = q.quest_id
+      WHERE uq.user_id = ?
+      AND q.type = 'main'
+      AND DATE(CONVERT_TZ(uq.created_at, 'UTC', ?)) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))
       LIMIT 1
     `,
-    [userId, timezone, timezone]
+    [userId, timezone, timezone],
   );
 
   return rows.length > 0;
@@ -669,7 +671,6 @@ export const deleteUserCustomQuestModel = async (userId) => {
 
   return true;
 };
-
 
 export const updateEventProgressModel = async (quest_id, progress, user_id) => {
   await db.query(`

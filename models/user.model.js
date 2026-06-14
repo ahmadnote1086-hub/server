@@ -41,7 +41,16 @@ const createUser = async (
  * @returns {Promise<Array<object>>} - An array of user objects
  */
 const fetchAllUsers = async () => {
-  const [users] = await db.query(`SELECT * FROM users`);
+  const [users] = await db.query(`
+    SELECT 
+      u.user_id,
+      u.timezone
+    FROM users u
+    JOIN stats s
+    ON u.user_id = s.user_id
+    WHERE s.hp > 0
+  `);
+
   return users;
 };
 
