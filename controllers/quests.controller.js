@@ -98,7 +98,7 @@ export const removeCustomQuestController = async (req, res) => {
 
 export const updateEventProgressController = async (req, res) => {
     try {
-        const { quest_id } = req.params;
+        const { uep_id } = req.params;
         const { progress } = req.body;
         const { timezone, id } = req.user;
 
@@ -109,7 +109,7 @@ export const updateEventProgressController = async (req, res) => {
             });
         }
 
-        const result = await updateEventProgressService(quest_id, progress, timezone, id);
+        const result = await updateEventProgressService(uep_id, progress, timezone, id);
         
         if (result.quest.is_completed === 1) {
             return res.status(200).json({

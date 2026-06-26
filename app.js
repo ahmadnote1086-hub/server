@@ -17,9 +17,11 @@ import adminReviewRoutes from './routes/admin/review.routes.js';
 import adminNotificationsRoutes from './routes/admin/notifications.routes.js';
 // Middlewares
 import { authMiddleware } from "./middlewares/auth.middleware.js";
+import { adminMiddleware } from './middlewares/admin.middle.js';
 // Cron
 import './cron/assignDailyQuests.cron.js'
-import { adminMiddleware } from './middlewares/admin.middle.js';
+import './cron/spawnEventQuests.cron.js'
+import './cron/cleanup.cron.js'
 
 const app = express();
 const PORT = process.env.PORT || 8000;

@@ -96,8 +96,8 @@ export const removeCustomQuestService = async (userId, timezone, questId) => {
 };
 
 // Update Event progress.
-export const updateEventProgressService = async (quest_id, progress, timezone, id) => {
-  const quest = await updateEventProgressModel(quest_id, progress, id);
+export const updateEventProgressService = async (uep_id, progress, timezone, id) => {
+  const quest = await updateEventProgressModel(uep_id, progress, id);
 
   if (!quest) {
     return {

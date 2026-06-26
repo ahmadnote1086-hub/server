@@ -17,7 +17,8 @@ const addQuestController = async (req, res) => {
         increment, max_reps,
         xp_gain, coins,
         duration,
-        target_type, target_value
+        target_type, target_value,
+        description
     } = req.body;
 
     const type = req.params.type;
@@ -28,7 +29,8 @@ const addQuestController = async (req, res) => {
             increment, max_reps,
             xp_gain, coins,
             duration,
-            target_type, target_value
+            target_type, target_value,
+            description
         );
 
         return res.status(200).json(result);

@@ -1,4 +1,6 @@
+import { TITLES } from "../config/titles.js";
 import db from "../db/mysqlConfig.js";
+import { unlockTitle } from "../services/title.service.js";
 import { throwErr } from "../utils/error.utils.js";
 
 /**
@@ -16,12 +18,12 @@ const createUser = async (
   username,
   fullname,
   hashedPassword,
-  timezone
+  timezone,
 ) => {
   try {
     const [result] = await db.query(
       `INSERT INTO users (email, username, fullname, password, timezone) VALUES (?, ?, ?, ?, ?)`,
-      [email, username, fullname, hashedPassword, timezone]
+      [email, username, fullname, hashedPassword, timezone],
     );
     if (result.affectedRows === 0) throwErr("Email already taken", 409);
 
@@ -41,16 +43,7 @@ const createUser = async (
  * @returns {Promise<Array<object>>} - An array of user objects
  */
 const fetchAllUsers = async () => {
-  const [users] = await db.query(`
-    SELECT 
-      u.user_id,
-      u.timezone
-    FROM users u
-    JOIN stats s
-    ON u.user_id = s.user_id
-    WHERE s.hp > 0
-  `);
-
+  const [users] = await db.query(`SELECT * FROM users`);
   return users;
 };
 
@@ -98,6 +91,27 @@ const fetchUserStats = async (userId) => {
 };
 
 /**
+ * Fetches unlocked titles of a user
+ *
+ * @param {int} userId - id of the user
+ * @returns {Promise<object|null>} - A title object if found, otherwise null
+ */
+const fetchUnlockedTitlesModel = async (userId) => {
+  const [titles] = await db.query(`
+    SELECT title_id 
+    FROM user_titles 
+    WHERE user_id = ?
+    ORDER BY unlocked_at DESC
+    `, [
+    userId,
+  ]);
+
+  titles.push({ title_id: "player"});
+
+  return titles;
+};
+
+/**
  * Update name of the user
  *
  * @param {int} userId - User's id
@@ -107,7 +121,7 @@ const fetchUserStats = async (userId) => {
 const updateName = async (userId, newfullname) => {
   const [result] = await db.query(
     `UPDATE users SET fullname = ? WHERE user_id = ?`,
-    [newfullname, userId]
+    [newfullname, userId],
   );
 
   if (result.affectedRows === 0) return null;
@@ -126,11 +140,22 @@ const updateStreak = async (userId) => {
     `UPDATE stats 
     SET streak = streak + 1, 
       highest_streak = GREATEST(highest_streak, streak)
-    WHERE user_id = ?`,
-    [userId]
+      WHERE user_id = ?`,
+    [userId],
   );
 
   if (result.affectedRows === 0) return null;
+
+  const [statsRows] = await db.query(
+    `SELECT streak FROM stats WHERE stats.user_id = ?`,
+    [userId],
+  );
+
+  const currentStreak = statsRows[0]?.streak;
+
+  const globalRank = await getGlobalRankForUserModel(userId);
+  await unlockTitle("streak", userId, currentStreak);
+  await unlockTitle("leaderboard", userId, globalRank);
 
   return true;
 };
@@ -147,7 +172,7 @@ const resetStreak = async (userId) => {
       SET streak = 0, 
       hp = hp - 1 
       WHERE user_id = ?`,
-    [userId]
+    [userId],
   );
 
   if (result.affectedRows === 0) return null;
@@ -172,12 +197,12 @@ const getGlobalRankingModel = async () => {
       s.total_xp, 
       s.streak,
       s.highest_streak,
-      s.title,
-      ROW_NUMBER() OVER (ORDER BY s.total_xp DESC) AS globalRank
+      s.title_id,
+      ROW_NUMBER() OVER (ORDER BY s.total_xp DESC, s.highest_streak DESC) AS globalRank
       FROM users AS u
       INNER JOIN stats AS s
       ON u.user_id = s.user_id  
-      LIMIT 15`
+      LIMIT 15`,
   );
 
   if (result.length === 0) return throwErr("No users found");
@@ -193,16 +218,30 @@ const getGlobalRankingModel = async () => {
  */
 const getGlobalRankForUserModel = async (userId) => {
   const [result] = await db.query(
-    `SELECT u.user_id, ROW_NUMBER() OVER (ORDER BY s.total_xp DESC) AS globalRank
-    FROM users AS u
-    INNER JOIN stats AS s
-    ON u.user_id = s.user_id`,
+    `SELECT COUNT(*) + 1 AS globalRank
+    FROM stats s1
+    WHERE 
+      s1.total_xp > (
+        SELECT total_xp 
+        FROM stats 
+        WHERE user_id = ?
+      )
+      OR (
+        s1.total_xp = (
+          SELECT total_xp 
+          FROM stats 
+          WHERE user_id = ?
+        ) 
+        AND s1.highest_streak > (
+          SELECT highest_streak 
+          FROM stats 
+          WHERE user_id = ?
+        )
+      )`,
+    [userId, userId, userId],
   );
-  
-  if (result.length === 0) return throwErr("No user found");
-  
-  const user = result.filter((user) => user.user_id === userId);
-  return user[0].globalRank;
+
+  return result[0].globalRank;
 };
 
 /**
@@ -218,24 +257,24 @@ const resetUserStatsModel = async (userId) => {
       total_xp = 0,
       level = 1,
       player_rank = 'E',
-      title = 'player',
+      title_id = 'player',
       streak = 0,
       highest_streak = 0,
       coins = 0,
       hp = 5,
       last_completed = null
     WHERE user_id = ?`,
-    [userId]
+    [userId],
   );
 
   if (result.affectedRows === 0) return throwErr("No user found");
-  
+
   return result.affectedRows > 0;
 };
 
 /**
  * Update user's avatar
- * @param {int} id - id of the avatar 
+ * @param {int} id - id of the avatar
  * @param {int} userId - id of the user
  *
  * @returns {Promise<{Boolean}>} - True if rows update else false
@@ -245,31 +284,84 @@ const changeAvatarModel = async (id, userId) => {
     `UPDATE users
     SET avatar = ?
     WHERE user_id = ?`,
-    [id, userId]
+    [id, userId],
   );
 
   if (result.affectedRows === 0) return throwErr("No user found");
-  
+
   return result.affectedRows > 0;
 };
 
+/**
+ * Update user's title
+ * @param {int} titleId - id of the title
+ * @param {int} userId - id of the user
+ *
+ * @returns {Promise<{Boolean}>} - True if rows update else false
+ */
+const changeTitleModel = async (titleId, userId) => {
+  if (titleId !== "player") {
+    const [userTitles] = await db.query(
+      `
+      SELECT 1 
+      FROM user_titles
+      WHERE title_id = ?
+      AND user_id = ?
+      LIMIT 1
+      `,
+      [titleId, userId],
+    );
+
+    if (userTitles.length === 0) {
+      throwErr("You have not unlocked this title yet!");
+    }
+  }
+
+  const [result] = await db.query(
+    `UPDATE stats
+    SET title_id = ?
+    WHERE user_id = ?`,
+    [titleId, userId],
+  );
+
+  if (result.affectedRows === 0) {
+    throwErr("No user found");
+  }
+
+  return result.affectedRows > 0;
+};
+
+/**
+ * Change name of the user
+ * @param {string} newName - New name to be registered
+ * @param {int} userId - id of the user
+ *
+ * @returns {Promise<{Boolean}>} - True if rows update else false
+ */
 const updateNameModel = async (newName, userId) => {
   const [result] = await db.query(
     `UPDATE users
     SET fullname = ?
     WHERE user_id = ?`,
-    [newName, userId]
+    [newName, userId],
   );
 
   if (result.affectedRows === 0) return throwErr("No user found", 404);
-  
+
   return result.affectedRows > 0;
 };
 
+/**
+ * Change username of the user
+ * @param {string} newUsername - New username to be registered
+ * @param {int} userId - id of the user
+ *
+ * @returns {Promise<{Boolean}>} - True if rows update else false
+ */
 const updateUsernameModel = async (newUsername, userId) => {
   const [[user]] = await db.query(
     `SELECT username_changed_at FROM users WHERE user_id = ?`,
-    [userId]
+    [userId],
   );
 
   if (!user) {
@@ -280,9 +372,7 @@ const updateUsernameModel = async (newUsername, userId) => {
     const now = new Date();
     const changedAt = new Date(user.username_changed_at);
 
-    const diffDays = Math.floor(
-      (now - changedAt) / (1000 * 60 * 60 * 24)
-    );
+    const diffDays = Math.floor((now - changedAt) / (1000 * 60 * 60 * 24));
 
     if (diffDays < 30) {
       throwErr("Username can only be changed every 30 days");
@@ -294,13 +384,13 @@ const updateUsernameModel = async (newUsername, userId) => {
     SET username = ?,
       username_changed_at = NOW()
     WHERE user_id = ?`,
-    [newUsername, userId]
+    [newUsername, userId],
   );
 
   if (result.affectedRows === 0) return throwErr("No user found", 404);
-  
+
   return result.affectedRows > 0;
-}
+};
 
 export {
   createUser,
@@ -308,6 +398,7 @@ export {
   fetchUserByEmail,
   fetchUserById,
   fetchUserStats,
+  fetchUnlockedTitlesModel,
   updateName,
   resetStreak,
   getGlobalRankingModel,
@@ -315,6 +406,7 @@ export {
   updateStreak,
   resetUserStatsModel,
   changeAvatarModel,
+  changeTitleModel,
   updateNameModel,
-  updateUsernameModel
+  updateUsernameModel,
 };

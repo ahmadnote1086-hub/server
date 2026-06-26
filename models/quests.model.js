@@ -3,6 +3,8 @@ import { throwErr } from "../utils/error.utils.js";
 import moment from "moment-timezone";
 import { createNotification } from "./notifications.model.js";
 import { getMaxReps } from "../utils/getMaxReps.js";
+import { unlockTitle } from "../services/title.service.js";
+import { getGlobalRankForUserModel } from "./user.model.js";
 
 /**
  * Fetch main, side and custom quests based on id of user
@@ -23,12 +25,14 @@ export const getQuestsModel = async (userId, timezone) => {
           q.type IN ('main', 'side')
           OR (q.type = 'custom' AND q.owner_user_id = ?)
         )`,
-    [userId, timezone, userId]
+    [userId, timezone, userId],
   );
 
   const mainQuests = rows.filter((quest) => quest.type === "main");
   const sideQuests = rows.filter((quest) => quest.type === "side");
-  const customQuests = rows.filter((quest) => quest.type === "custom" && quest.owner_user_id === userId );
+  const customQuests = rows.filter(
+    (quest) => quest.type === "custom" && quest.owner_user_id === userId,
+  );
 
   return { mainQuests, sideQuests, customQuests };
 };
@@ -40,17 +44,19 @@ export const getQuestsModel = async (userId, timezone) => {
  * @returns {Promise<{ eventQuests: Object[] }>} - An object containing arrays of main and side quests.
  */
 export const getEventQuestsModel = async (userId) => {
-  const [rows] = await db.query(
-    `SELECT *
-    FROM user_quests uq
+  const [rows] = await db.query(`
+    SELECT *, ge.ends_at AS ends_at
+    FROM user_event_progress uep
+    JOIN global_events ge
+      ON uep.ge_id = ge.ge_id
     JOIN quests q
-    ON uq.quest_id = q.quest_id
+      ON ge.quest_id = q.quest_id
     WHERE 
-      uq.user_id = ?
+      uep.user_id = ?
       AND
       q.type = 'event'
-      AND NOW() < q.ends_at`,
-    [userId]
+      AND NOW() < ge.ends_at`,
+    [userId],
   );
 
   return { eventQuests: rows };
@@ -72,7 +78,7 @@ export const getQuestsModelByDate = async (userId, timezone, date) => {
         ON q.quest_id = uq.quest_id
         WHERE uq.user_id = ? 
             AND DATE(uq.created_at) = DATE(CONVERT_TZ(?, 'UTC', ?))`,
-    [userId, date, timezone]
+    [userId, date, timezone],
   );
 
   const mainQuests = rows.filter((quest) => quest.type === "main");
@@ -92,7 +98,7 @@ export const getAllQuestsModel = async () => {
       FROM users as u
       LEFT JOIN user_quests as uq
       ON u.user_id = uq.user_id
-      WHERE DATE(CONVERT_TZ(uq.created_at, 'UTC', u.timezone)) = CURDATE()`
+      WHERE DATE(CONVERT_TZ(uq.created_at, 'UTC', u.timezone)) = CURDATE()`,
   );
 
   const mainQuests = rows.filter((quest) => quest.type === "main");
@@ -119,7 +125,7 @@ export const getQuestsHistoryModel = async (userId) => {
         AND Date(uq.created_at) >= CURDATE() - INTERVAL 30 DAY
         AND Date(uq.created_at) < CURDATE()
       ORDER BY created_date DESC`,
-    [userId]
+    [userId],
   );
 
   const questHistory = rows.reduce((acc, row) => {
@@ -161,7 +167,7 @@ export const completeQuestModel = async (userId, userQuestId, timezone) => {
      WHERE user_quest_id = ?
         AND user_id = ?
         AND is_completed = 0`,
-    [userQuestId, userId]
+    [userQuestId, userId],
   );
   if (quest.length === 0) {
     throwErr("No quests were found!", 404);
@@ -172,7 +178,7 @@ export const completeQuestModel = async (userId, userQuestId, timezone) => {
           SET is_completed = 1  
           WHERE user_quest_id = ?
             AND user_id = ?`,
-    [userQuestId, userId]
+    [userQuestId, userId],
   );
 
   const [quests] = await db.query(
@@ -182,11 +188,10 @@ export const completeQuestModel = async (userId, userQuestId, timezone) => {
      WHERE user_id = ?
       AND type = 'main'
       AND DATE(uq.created_at) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))`,
-    [userId, timezone]
+    [userId, timezone],
   );
 
-  const isMainQuestsCompleted = quests
-    .every((q) => q.is_completed);
+  const isMainQuestsCompleted = quests.every((q) => q.is_completed);
 
   return {
     xpReward: quest[0].xp_gain,
@@ -206,7 +211,7 @@ export const completeQuestModel = async (userId, userQuestId, timezone) => {
 export const completeAllQuestsForTodayModal = async (
   userId,
   type,
-  timezone
+  timezone,
 ) => {
   const [incompleteQuests] = await db.query(
     `SELECT uq.user_quest_id, q.xp_gain, q.coins
@@ -216,7 +221,7 @@ export const completeAllQuestsForTodayModal = async (
        AND q.type = ?
        AND uq.is_completed = 0
        AND DATE(uq.created_at) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))`,
-    [userId, type, timezone]
+    [userId, type, timezone],
   );
 
   if (incompleteQuests.length === 0) {
@@ -227,7 +232,7 @@ export const completeAllQuestsForTodayModal = async (
     `UPDATE user_quests
       SET is_completed = 1
       WHERE user_quest_id IN (?)`,
-    [incompleteQuests.map((q) => q.user_quest_id)]
+    [incompleteQuests.map((q) => q.user_quest_id)],
   );
 
   const totalXpReward = incompleteQuests.reduce((sum, q) => sum + q.xp_gain, 0);
@@ -249,13 +254,13 @@ export const updateStatsModel = async (
   userId,
   timezone,
   xpReward,
-  coinReward
+  coinReward,
 ) => {
   const [statsRows] = await db.query(
     `SELECT * FROM stats WHERE stats.user_id = ?`,
-    [userId]
+    [userId],
   );
-  
+
   if (statsRows.length === 0) throwErr("No stats found for user", 404);
 
   let { xp: currentXp, coins, level, player_rank: rank } = statsRows[0];
@@ -264,9 +269,12 @@ export const updateStatsModel = async (
   let requiredXP = level * 100 + (level - 1) * 50;
 
   while (newXp >= requiredXP) {
+    const prevLevel = level;
     level++;
     newXp -= requiredXP;
     requiredXP = level * 100 + (level - 1) * 50;
+
+    await unlockTitle("level", userId, level);
 
     if (level >= 6 && level <= 10) rank = "D";
     else if (level >= 11 && level <= 20) rank = "C";
@@ -281,18 +289,30 @@ export const updateStatsModel = async (
 
   await db.query(
     `UPDATE stats
-      SET xp = ?,
-        level = ?,
-        total_xp = total_xp + ?,
-        coins = ?,
-        player_rank = ?,
-        last_completed = ?
-      WHERE user_id = ?`,
-    [newXp, level, xpReward, totalCoins, rank, userLocalTime, userId]
+        SET xp = ?,
+          level = ?,
+          total_xp = total_xp + ?,
+          coins = ?,
+          player_rank = ?,
+          last_completed = ?
+          WHERE user_id = ?`,
+    [newXp, level, xpReward, totalCoins, rank, userLocalTime, userId],
   );
 
+  // Check if leaderboard title is achievable
+  const globalRank = await getGlobalRankForUserModel(userId);
+
+  await unlockTitle("leaderboard", userId, globalRank);
+
   if (statsRows[0].player_rank !== rank) {
-    await createNotification(userId, "Rank Up!", `Your power has grown. You are now a ${rank}-Rank Hunter.`, "system", null, null);
+    await createNotification(
+      userId,
+      "Rank Up!",
+      `Your power has grown. You are now a ${rank}-Rank Hunter.`,
+      "system",
+      null,
+      null,
+    );
   }
 
   return true;
@@ -304,10 +324,10 @@ export const updateStatsModel = async (
  * @param {int} userId - id of a specific user
  * @param {string} timezone - timezone of the user
  * @returns {Promise<boolean>} true/false
-*/
+ */
 export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
   const [quests] = await db.query(
-    `SELECT * FROM quests WHERE type IN ('main', 'side')`
+    `SELECT * FROM quests WHERE type IN ('main', 'side')`,
   );
 
   if (!quests || quests.length === 0) {
@@ -321,18 +341,13 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
 
   for (const quest of quests) {
     const [lastQuestRows] = await db.query(
-      `SELECT 
-        uq.total_reps,
-        q.max_reps
-      FROM user_quests uq
-      JOIN quests q
-        ON uq.quest_id = q.quest_id
-      WHERE 
-        uq.user_id = ? 
-        AND uq.quest_id = ? 
-      ORDER 
-        BY uq.created_at DESC LIMIT 1`,
-      [userId, quest.quest_id]
+      `SELECT *
+        FROM user_quests
+        JOIN quests 
+        ON user_quests.quest_id = quests.quest_id
+        WHERE user_quests.user_id = ? AND user_quests.quest_id = ? 
+        ORDER BY user_quests.created_at DESC LIMIT 1`,
+      [userId, quest.quest_id],
     );
 
     let totalReps;
@@ -347,11 +362,11 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
     } else {
       totalReps = quest.base_amount;
     }
-    
+
     await db.query(
-      `INSERT IGNORE INTO user_quests (user_id, quest_id, total_reps, created_at)
+      `INSERT INTO user_quests (user_id, quest_id, total_reps, created_at)
       VALUES (?, ?, ?, ?)`,
-      [userId, quest.quest_id, totalReps, assignedAt]
+      [userId, quest.quest_id, totalReps, assignedAt],
     );
   }
 
@@ -365,12 +380,15 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
  * @param {string} timezone - timezone of the user
  * @returns {Promise<boolean>} true/false
  */
-export const assignDailyCustomQuestsModel = async (userId, timezone = "UTC") => {
+export const assignDailyCustomQuestsModel = async (
+  userId,
+  timezone = "UTC",
+) => {
   const [quests] = await db.query(
     `SELECT * FROM quests 
       WHERE type IN ('custom') 
       AND owner_user_id = ?`,
-      [userId]
+    [userId],
   );
 
   if (!quests || quests.length === 0) {
@@ -386,7 +404,7 @@ export const assignDailyCustomQuestsModel = async (userId, timezone = "UTC") => 
     await db.query(
       `INSERT INTO user_quests (user_id, quest_id, total_reps, created_at)
       VALUES (?, ?, ?, ?)`,
-      [userId, quest.quest_id, quest.reps, assignedAt]
+      [userId, quest.quest_id, quest.reps, assignedAt],
     );
   }
 
@@ -438,7 +456,7 @@ export const newCustomQuestModel = async (questInfo) => {
         questInfo.increment,
         questInfo.xp_gain,
         questInfo.unit,
-      ]
+      ],
     );
 
     if (result.affectedRows === 0) throwErr("Failed to insert quest", 500);
@@ -447,7 +465,7 @@ export const newCustomQuestModel = async (questInfo) => {
     for (let user of users) {
       await db.query(
         `INSERT INTO user_quests (user_id, quest_id) VALUES (?, ?)`,
-        [user.user_id, result.insertId]
+        [user.user_id, result.insertId],
       );
     }
 
@@ -509,7 +527,7 @@ export const deleteQuestModel = async (questId) => {
 export const unassignUserQuestModel = async (userId, questId) => {
   const [result] = await db.query(
     `DELETE FROM user_quests WHERE user_id = ? AND quest_id = ?`,
-    [userId, questId]
+    [userId, questId],
   );
 
   return { deleted: result.affectedRows > 0 };
@@ -540,32 +558,42 @@ export const resetUserQuestModel = async (userId) => {
  * @param {string} timezone - timezone
  * @returns {Promise<object>} array of quests
  */
-export const addCustomQuestModel = async (userId, name, unit, reps, category, timezone) => {
-  const [[user]] = await db.query(`SELECT s.level FROM users u JOIN stats s ON s.user_id = u.user_id WHERE u.user_id = ?`, 
-    [userId]
+export const addCustomQuestModel = async (
+  userId,
+  name,
+  unit,
+  reps,
+  category,
+  timezone,
+) => {
+  const [[user]] = await db.query(
+    `SELECT s.level FROM users u JOIN stats s ON s.user_id = u.user_id WHERE u.user_id = ?`,
+    [userId],
   );
   if (!user || user.length === 0) return throwErr("User not found", 404);
 
   const MAXIMUM_QUESTS_ALLOWED = getMaxReps(user.level);
 
-  const [[{count}]] = await db.query(`SELECT COUNT(*) as count FROM quests WHERE type = 'custom' AND owner_user_id = ?`, 
-    [userId]
+  const [[{ count }]] = await db.query(
+    `SELECT COUNT(*) as count FROM quests WHERE type = 'custom' AND owner_user_id = ?`,
+    [userId],
   );
-  if (count >= MAXIMUM_QUESTS_ALLOWED) return throwErr("Maximum quests already created", 403);
+  if (count >= MAXIMUM_QUESTS_ALLOWED)
+    return throwErr("Maximum quests already created", 403);
 
   const createdAt = moment.tz(timezone).format("YYYY-MM-DD HH:mm:ss");
 
-  if (unit === 'min' && reps <= 5) {
-    unit = 'sec';
+  if (unit === "min" && reps <= 5) {
+    unit = "sec";
     reps = reps * 60;
   }
 
   const [result] = await db.query(
-  `
+    `
     INSERT INTO quests (name, type, base_amount, increment, xp_gain, unit, coins, reps, max_reps, owner_user_id, category, created_at)
     VALUES (?, 'custom', ?, NULL, 15, ?, 25, ?, NULL, ?, ?, ?)
   `,
-  [name, reps, unit, reps, userId, category, createdAt]
+    [name, reps, unit, reps, userId, category, createdAt],
   );
 
   return result.insertId;
@@ -579,10 +607,14 @@ export const addCustomQuestModel = async (userId, name, unit, reps, category, ti
  * @param {int} questId - Quest's id
  * @returns {Promise<object>} array of quests
  */
-export const assignCustomQuestModel = async (userId, timezone = 'UTC', questId) => {
+export const assignCustomQuestModel = async (
+  userId,
+  timezone = "UTC",
+  questId,
+) => {
   const [quests] = await db.query(
     `SELECT * FROM quests WHERE type = 'custom' AND owner_user_id = ? AND quest_id = ?`,
-    [userId, questId]
+    [userId, questId],
   );
 
   if (!quests || quests.length === 0) {
@@ -593,11 +625,11 @@ export const assignCustomQuestModel = async (userId, timezone = 'UTC', questId) 
     .tz(timezone)
     .startOf("day")
     .format("YYYY-MM-DD HH:mm:ss");
-    
+
   await db.query(
     `INSERT INTO user_quests (user_id, quest_id, total_reps, created_at)
     VALUES (?, ?, ?, ?)`,
-    [userId, questId, quests[0].reps, assignedAt]
+    [userId, questId, quests[0].reps, assignedAt],
   );
 
   return quests.length > 0;
@@ -618,7 +650,7 @@ export const removeCustomQuestModel = async (userId, questId, timezone) => {
       AND owner_user_id = ? 
       AND quest_id = ?
       AND DATE(created_at) != DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))`,
-    [userId, questId, timezone]
+    [userId, questId, timezone],
   );
 
   if (result.affectedRows === 0) {
@@ -640,7 +672,7 @@ export const unAssignCustomQuestModel = async (userId, questId) => {
     `DELETE FROM user_quests
      WHERE user_id = ? 
      AND quest_id = ? `,
-    [userId, questId]
+    [userId, questId],
   );
 
   if (result.affectedRows === 0) {
@@ -660,37 +692,175 @@ export const deleteUserCustomQuestModel = async (userId) => {
   await db.query(
     `DELETE FROM user_quests
      WHERE user_id = ?`,
-    [userId]
+    [userId],
   );
 
   await db.query(
     `DELETE FROM quests
      WHERE owner_user_id = ?`,
-    [userId]
+    [userId],
   );
 
   return true;
 };
 
-export const updateEventProgressModel = async (quest_id, progress, user_id) => {
-  await db.query(`
-    UPDATE user_quests
+// TODO: Modify it according to new event logic
+export const getTotalEventsCompleted = async (user_id) => {
+  const [rows] = await db.query(
+    `
+    SELECT COUNT(*) AS total
+    FROM quests q
+    JOIN user_quests uq
+      ON uq.quest_id = q.quest_id
+    WHERE 
+      q.type = 'event' 
+      AND uq.is_completed = 1
+      AND uq.user_id = ?    
+  `,
+    [user_id],
+  );
+
+  return rows[0].total;
+};
+
+export const updateEventProgressModel = async (uep_id, progress, user_id) => {
+  await db.query(
+    `
+    UPDATE user_event_progress
     SET 
       current_reps = LEAST(current_reps + ?, total_reps), 
       is_completed = IF(current_reps >= total_reps, 1, 0)
     WHERE 
       is_completed = 0
-      AND user_quest_id = ?
+      AND uep_id = ?
       AND user_id = ?
-  `, [progress, quest_id, user_id]);
+  `,
+    [progress, uep_id, user_id],
+  );
 
-  const [rows] = await db.query(`
-    SELECT uq.is_completed, uq.current_reps, uq.total_reps, q.xp_gain, q.coins
-    FROM user_quests uq
+  const [rows] = await db.query(
+    `
+    SELECT uep.is_completed, uep.current_reps, uep.total_reps, q.xp_gain, q.coins
+    FROM user_event_progress uep
+    JOIN global_events ge
+      ON uep.ge_id = ge.ge_id
     JOIN quests q
-    ON uq.quest_id = q.quest_id
-    WHERE uq.user_quest_id = ?
-  `, [quest_id]);
+      ON ge.quest_id = q.quest_id
+    WHERE uep.uep_id = ?
+  `,
+    [uep_id],
+  );
+
+  const totalEventsComplete = await getTotalEventsCompleted(user_id);
+
+  await unlockTitle("event", user_id, totalEventsComplete);
 
   return rows[0] || null;
+};
+
+export const spawnEventQuests = async (quest_id, progress, user_id) => {
+  const random = Math.random();
+
+  // 1/4 chance of assigning daily event quests
+  if (random > 0.25) return null;
+
+  const [activeEventQuests] = await db.query(`
+    SELECT quest_id
+    FROM global_events 
+    WHERE ends_at > NOW()
+    FOR UPDATE
+  `);
+  
+  // If event quests are assigned at the moment then don't activate anymore
+  if (activeEventQuests.length >= 2) return null;
+
+  const [allEventQuests] = await db.query(`
+    SELECT * FROM quests 
+    WHERE type = 'event'
+  `);
+
+  // filter quests that are not active
+  const availableQuests = allEventQuests.filter(
+    (quest) => !activeEventQuests.some((q) => q.quest_id === quest.quest_id),
+  );
+  
+  if (availableQuests.length === 0) return null;
+  
+  const randomIndex = Math.floor(Math.random() * availableQuests.length);
+  const selectedQuest = availableQuests[randomIndex];
+  
+
+  // Longer duration = Higher difficult
+  const difficulty =
+    selectedQuest.xp_gain * 0.6 + Math.sqrt(selectedQuest.base_amount) * 10;
+
+  let duration = 24;
+  if (difficulty > 180 && difficulty <= 240) duration = 48;
+  if (difficulty > 240) duration = 7 * 24;
+
+  const spawnedAt = new Date();
+  const endsAt = new Date(spawnedAt.getTime() + duration * 60 * 60 * 1000);
+
+  const [result] = await db.query(
+    `
+    INSERT INTO 
+    global_events (quest_id, spawned_at, ends_at)
+    VALUES (?, ?, ?)
+  `,
+    [selectedQuest.quest_id, spawnedAt, endsAt],
+  );
+
+  const [users] = await db.query(`
+    SELECT u.user_id 
+    FROM users u
+    JOIN stats s
+    ON u.user_id = s.user_id
+    WHERE s.hp > 0
+  `);
+f
+  const values = users.map((user) => [user.user_id, result.insertId, selectedQuest.reps]);
+
+  await db.query(
+    `
+    INSERT INTO 
+    user_event_progress (user_id, ge_id, total_reps)
+    VALUES ?
+  `,
+    [values],
+  );
+
+  const [notifResult] = await db.query(
+      `INSERT INTO
+      notification
+      (title, message, type, reference_type, reference_id) 
+      VALUES (?, ?, ?, ?, ?)`,
+      [
+        'New event quest added',
+        "New limited time quest added to events. Complete it before it expires.", 
+        'quests', 
+        'quests', 
+        selectedQuest.quest_id
+      ],
+    );
+
+    const noti_id = notifResult.insertId;
+
+    const userNotiValues = users.map((u) => [
+      u.user_id,
+      noti_id
+    ]);
+    
+    await db.query(
+      `INSERT INTO
+      user_notification
+      (user_id, n_id) 
+      VALUES ?`,
+      [userNotiValues],
+    );
+
+  return {
+    ge_id: result.insertId,
+    quest: selectedQuest,
+    endsAt,
+  };
 };

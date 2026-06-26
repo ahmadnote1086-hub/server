@@ -4,7 +4,9 @@ import {
   getGlobalRankingService,
   resetUserProfileService,
   addReviewService,
-  changeAvatarService
+  changeAvatarService,
+  changeTitleService,
+  fetchUnlockedTitlesService
 } from "../services/profile.service.js";
 
 export const getUserProfileController = async (req, res) => {
@@ -16,6 +18,21 @@ export const getUserProfileController = async (req, res) => {
       message: result.message,
       profile: result.profile,
       quests: result.quests,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(error.status || 500).json(error);
+  }
+};
+
+export const fetchUnlockedTitlesController = async (req, res) => {
+  try {
+    const user = req.user;
+    const result = await fetchUnlockedTitlesService(user.id);
+
+    res.status(200).json({
+      message: result.message,
+      titles: result.titles,
     });
   } catch (error) {
     console.log(error);
@@ -112,6 +129,30 @@ export const changeAvatarController = async (req, res) => {
     }
 
     const result = await changeAvatarService(id, user.id);
+
+    res.status(200).json({
+      message: result.message,
+      success: result.success,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(error.status || 500).json(error);
+  }
+};
+
+export const changeTitleController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+
+    if (!id) {
+      res.status(401).json({
+        success: false,
+        message: "Id not provided",
+      });
+    }
+
+    const result = await changeTitleService(id, user.id);
 
     res.status(200).json({
       message: result.message,

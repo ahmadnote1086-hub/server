@@ -11,7 +11,8 @@ const addQuestService = async (
     increment, max_reps,
     xp_gain, coins,
     duration,
-    target_type, target_value
+    target_type, target_value,
+    description
 ) => {
 
     let endsAt = null;
@@ -31,6 +32,7 @@ const addQuestService = async (
         increment, max_reps,
         xp_gain, coins,
         target_type, target_value,
+        description,
         endsAt
     );
 

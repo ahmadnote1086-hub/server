@@ -12,7 +12,7 @@ const getRecentNotificationsModel = async () => {
 };
 
 const sendNotificationModel = async (payload) => {
-  const { recipient, userId, type, title, message, referenceType, referenceId } = payload;
+  const { recipient, userId, type, title, message, link, referenceType, referenceId } = payload;
   let users = [];
   
   if (recipient === "active") {
@@ -31,9 +31,9 @@ const sendNotificationModel = async (payload) => {
     const [nResult] = await db.query(
       `INSERT INTO
       notification
-      (title, message, type, reference_type, reference_id) 
-      VALUES (?, ?, ?, ?, ?)`,
-      [title, message, type, referenceType, referenceId],
+      (title, message, type, link, reference_type, reference_id) 
+      VALUES (?, ?, ?, ?, ?, ?)`,
+      [title, message, type, link, referenceType, referenceId],
     );
     
     const n_id = nResult.insertId;

@@ -87,7 +87,7 @@ const insertEventQuests = async (quest_id, total_reps, target_type, target_value
 };
 
 const addQuestsModel = async (
-  name, type, category, base_amount, unit, increment, max_reps, xp_gain, coins, target_type, target_value, endsAt
+  name, type, category, base_amount, unit, increment, max_reps, xp_gain, coins, target_type, target_value, description, endsAt
 ) => {
   const createdAT = new Date();
 
@@ -99,10 +99,11 @@ const addQuestsModel = async (
           xp_gain, coins,
           target_type, target_value,
           ends_at, reps,
+          description,
           created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    [name, type, category, base_amount, unit, increment || null, max_reps || null, xp_gain, coins, target_type, target_value || null, endsAt, base_amount, createdAT],
+    [name, type, category, base_amount, unit, increment || null, max_reps || null, xp_gain, coins, target_type, target_value || null, endsAt, base_amount, description, createdAT],
   );
 
   if (type === 'event') {
@@ -121,7 +122,7 @@ const removeQuestsModel = async (questId) => {
   if (quest[0].type === "main")
     throw new Error("Main quests cannot be deleted!");
 
-  const result = await db.query(
+  const [result] = await db.query(
     `DELETE FROM quests WHERE quest_id = ? AND type != 'main'`,
     [questId],
   );
