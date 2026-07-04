@@ -341,13 +341,18 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
 
   for (const quest of quests) {
     const [lastQuestRows] = await db.query(
-      `SELECT *
-        FROM user_quests
-        JOIN quests 
-        ON user_quests.quest_id = quests.quest_id
-        WHERE user_quests.user_id = ? AND user_quests.quest_id = ? 
-        ORDER BY user_quests.created_at DESC LIMIT 1`,
-      [userId, quest.quest_id],
+      `SELECT 
+        uq.total_reps,
+        q.max_reps
+      FROM user_quests uq
+      JOIN quests q
+        ON uq.quest_id = q.quest_id
+      WHERE 
+        uq.user_id = ? 
+        AND uq.quest_id = ? 
+      ORDER 
+        BY uq.created_at DESC LIMIT 1`,
+      [userId, quest.quest_id]
     );
 
     let totalReps;
@@ -364,7 +369,7 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
     }
 
     await db.query(
-      `INSERT INTO user_quests (user_id, quest_id, total_reps, created_at)
+      `INSERT IGNORE INTO user_quests (user_id, quest_id, total_reps, created_at)
       VALUES (?, ?, ?, ?)`,
       [userId, quest.quest_id, totalReps, assignedAt],
     );
@@ -704,18 +709,13 @@ export const deleteUserCustomQuestModel = async (userId) => {
   return true;
 };
 
-// TODO: Modify it according to new event logic
 export const getTotalEventsCompleted = async (user_id) => {
   const [rows] = await db.query(
     `
     SELECT COUNT(*) AS total
-    FROM quests q
-    JOIN user_quests uq
-      ON uq.quest_id = q.quest_id
-    WHERE 
-      q.type = 'event' 
-      AND uq.is_completed = 1
-      AND uq.user_id = ?    
+    FROM user_event_progress
+    WHERE user_id = ?
+      AND is_completed = 1 
   `,
     [user_id],
   );
@@ -817,7 +817,7 @@ export const spawnEventQuests = async (quest_id, progress, user_id) => {
     ON u.user_id = s.user_id
     WHERE s.hp > 0
   `);
-f
+
   const values = users.map((user) => [user.user_id, result.insertId, selectedQuest.reps]);
 
   await db.query(

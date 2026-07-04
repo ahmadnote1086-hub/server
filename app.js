@@ -12,6 +12,7 @@ import shopRoutes from './routes/shop.routes.js';
 import hunterRoutes from './routes/admin/hunters.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import gumroadRoutes from './routes/gumroad.routes.js';
 import adminQuestsRoutes from './routes/admin/quests.routes.js';
 import adminReviewRoutes from './routes/admin/review.routes.js';
 import adminNotificationsRoutes from './routes/admin/notifications.routes.js';
@@ -19,9 +20,9 @@ import adminNotificationsRoutes from './routes/admin/notifications.routes.js';
 import { authMiddleware } from "./middlewares/auth.middleware.js";
 import { adminMiddleware } from './middlewares/admin.middle.js';
 // Cron
-import './cron/assignDailyQuests.cron.js'
-import './cron/spawnEventQuests.cron.js'
-import './cron/cleanup.cron.js'
+import './cron/assignDailyQuests.cron.js';
+import './cron/spawnEventQuests.cron.js';
+import './cron/cleanup.cron.js';
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -34,11 +35,14 @@ app.use(cors({
   credentials: true
 }));
 
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(cookieParser());
 app.use('/images', express.static('images'))
 
 app.get('/', (req, res) => res.send('API is running'));
+
+app.use('/api/gumroad', gumroadRoutes);
 
 app.use('/auth', authRoutes);
 app.use('/profile', authMiddleware, profileRoutes);

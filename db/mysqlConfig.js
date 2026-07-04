@@ -21,16 +21,6 @@ const pool = mysql.createPool({
   }),
 });
 
-// const pool = mysql.createPool({
-//   host: "localhost",
-//   user: "root",
-//   password: "zeeshan#2025",
-//   database: "solo_leveling_tracker",
-//   waitForConnections: true,
-//   connectionLimit: 10,
-//   queueLimit: 0,
-// });
-
 const connection = await pool.getConnection();
 
 async function setupTables() {
