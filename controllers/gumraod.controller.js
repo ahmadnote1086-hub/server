@@ -7,8 +7,6 @@ export const gumroadController = async (req, res) => {
     const expectedSecret = process.env.GUMROAD_WEBHOOK_SECRET;
     const productId = req.body.product_id;
 
-    console.log(req.body);
-
     if (!providedSecret || providedSecret !== expectedSecret) {
       console.warn("⚠️ Unauthorized request attempt blocked.");
       return res.status(401).send("Unauthorized");

@@ -8,7 +8,7 @@ import { throwErr } from "../utils/error.utils.js";
 
 export const processDonation = async (payload, type) => {
   try {
-    const email = payload.custom_fields?.["SoloLevelX Email"];
+    const email = payload.custom_fields?.["SoloLevelX Email"]?.trim();
     const user = await fetchUserByEmail(email);
     let userId;
 
