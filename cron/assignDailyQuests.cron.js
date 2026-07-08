@@ -4,10 +4,10 @@ import { assignDailyQuests } from "../services/quests.service.js";
 import { fetchAllUsers, fetchUserStats, resetStreak } from "../models/user.model.js";
 import {
   assignDailyCustomQuestsModel,
+  checkCustomQuestsAssignedToday,
   checkQuestsAssignedToday,
   getQuestsModelByDate,
 } from "../models/quests.model.js";
-import { unlockTitle } from "../services/title.service.js";
 
 // Runs every hour
 cron.schedule("0 * * * *", async () => {
@@ -16,31 +16,36 @@ cron.schedule("0 * * * *", async () => {
 
     for (const user of users) {
       try {
-        const alreadyAssigned = await checkQuestsAssignedToday(user.user_id, user.timezone);
-        
         const stats = await fetchUserStats(user.user_id);
-        
-        // await unlockTitle("level", user.user_id, stats.level); // Run this once, to give titles
-        
-        if (!alreadyAssigned && stats.hp > 0) {
-          const yesterday = moment().tz(user.timezone).subtract(1, "day").format("YYYY-MM-DD");
-          const quests = await getQuestsModelByDate(user.user_id, user.timezone, yesterday);
-          
-          const lastUsed = stats.recovery_last_used ? moment(stats.recovery_last_used).tz(user.timezone).format("YYYY-MM-DD") : null;
-          const isRecoveryActive = yesterday === lastUsed; 
-          
-          const hasQuests = quests.mainQuests.length > 0;
-          
-          if (hasQuests) {
-            const allCompleted = quests.mainQuests.every((q) => q.is_completed);
+
+        if (stats.hp > 0) {
+          const alreadyAssigned = await checkQuestsAssignedToday(user.user_id, user.timezone);
+
+          if (!alreadyAssigned) {
+            const yesterday = moment().tz(user.timezone).subtract(1, "day").format("YYYY-MM-DD");
+            const quests = await getQuestsModelByDate(user.user_id, user.timezone, yesterday);
             
-            if (!allCompleted && !isRecoveryActive) {
+            const lastUsed = stats.recovery_last_used ? moment(stats.recovery_last_used).tz(user.timezone).format("YYYY-MM-DD") : null;
+            const isRecoveryActive = yesterday === lastUsed; 
+            
+            const hasQuests = quests.mainQuests.length > 0;
+            
+            if (hasQuests) {
+              const allCompleted = quests.mainQuests.every((q) => q.is_completed);
+              
+              if (!allCompleted && !isRecoveryActive) {
                 await resetStreak(user.user_id);
               }
             }
-            
+              
             await assignDailyQuests(user.user_id, user.timezone);
+          }
+
+          const customAssigned = await checkCustomQuestsAssignedToday(user.user_id, user.timezone);
+
+          if (!customAssigned) {
             await assignDailyCustomQuestsModel(user.user_id, user.timezone);
+          }
         }
       } catch (error) {
         console.error(`Failed to assign quest for user ${user.user_id}:`, error);

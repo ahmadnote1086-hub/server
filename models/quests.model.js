@@ -407,7 +407,7 @@ export const assignDailyCustomQuestsModel = async (
 
   for (const quest of quests) {
     await db.query(
-      `INSERT INTO user_quests (user_id, quest_id, total_reps, created_at)
+      `INSERT IGNORE INTO user_quests (user_id, quest_id, total_reps, created_at)
       VALUES (?, ?, ?, ?)`,
       [userId, quest.quest_id, quest.reps, assignedAt],
     );
@@ -432,6 +432,31 @@ export const checkQuestsAssignedToday = async (userId, timezone) => {
       ON uq.quest_id = q.quest_id
       WHERE uq.user_id = ?
       AND q.type = 'main'
+      AND DATE(CONVERT_TZ(uq.created_at, 'UTC', ?)) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))
+      LIMIT 1
+    `,
+    [userId, timezone, timezone],
+  );
+
+  return rows.length > 0;
+};
+
+/**
+ * Checks if custom quests are assigned for today
+ *
+ * @param {int} userId - id of a specific user
+ * @param {string} timezone - timezone of the user
+ * @returns {Promise<boolean>} true/false
+ */
+export const checkCustomQuestsAssignedToday = async (userId, timezone) => {
+  const [rows] = await db.query(
+    `
+      SELECT 1
+      FROM user_quests uq
+      JOIN quests q
+      ON uq.quest_id = q.quest_id
+      WHERE uq.user_id = ?
+      AND q.type = 'custom'
       AND DATE(CONVERT_TZ(uq.created_at, 'UTC', ?)) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))
       LIMIT 1
     `,
