@@ -106,7 +106,7 @@ export const updateUserProfileService = async (user, newFullName) => {
   return { success: true, message: "User updated successfully" };
 };
 
-// Update or edit user profile
+// Get global ranking
 export const getGlobalRankingService = async () => {
   const leaderboard = await getGlobalRankingModel();
 
@@ -114,6 +114,21 @@ export const getGlobalRankingService = async () => {
     success: true,
     message: "Leaderboard fetched successfully",
     leaderboard,
+  };
+};
+
+// Update or edit user profile
+export const getReminderTimeService = async (userId) => {
+  const reminderTime = await getReminderTime(userId);
+
+  if (!reminderTime) {
+    throwErr("No user found", 404);
+  }
+
+  return {
+    success: true,
+    message: "Reminder Time fetched successfully",
+    reminderTime: reminderTime?.slice(0, 5)
   };
 };
 

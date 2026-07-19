@@ -6,7 +6,8 @@ import {
   addReviewService,
   changeAvatarService,
   changeTitleService,
-  fetchUnlockedTitlesService
+  fetchUnlockedTitlesService,
+  getReminderTimeService
 } from "../services/profile.service.js";
 
 export const getUserProfileController = async (req, res) => {
@@ -73,6 +74,19 @@ export const getGlobalRankingController = async (req, res) => {
     res.status(error.status || 500).json(error);
   }
 };
+
+export const getReminderTimeController = async (req, res) => {
+    const userId = req.user.id;
+
+    try {
+        const result = await getReminderTimeService(userId);
+
+        return res.json({ reminderTime: result.reminderTime, message: "Reminder Time fetched successfully" });
+    } catch (error) {
+        console.log(error);
+        res.status(error.status || 500).json(error);
+    }
+}
 
 export const resetUserProfileController = async (req, res) => {
   try {
