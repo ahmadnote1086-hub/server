@@ -91,6 +91,7 @@ const fetchUserById = async (id) => {
       email, 
       username, 
       fullname, 
+      role,
       timezone, 
       avatar, 
       username_changed_at, 
