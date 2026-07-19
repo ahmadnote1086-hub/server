@@ -25,6 +25,7 @@ cron.schedule("*/15 * * * *", async () => {
     await sendPushToSubscription(subscriptions, {
       title: "⚔️ Daily Quest Reminder",
       body: "The System has assigned your daily training.",
+      icon: "/android-chrome-192x192.png",
       tag: "daily-reminder",
     });
 

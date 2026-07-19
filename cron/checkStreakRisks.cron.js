@@ -20,6 +20,7 @@ cron.schedule("0 * * * *", async () => {
     await sendPushToSubscription(subscriptions, {
       title: "⚠️ Streak at Risk!",
       body: "Your streak is about to break. Complete today's quests before reset.",
+      icon: "/android-chrome-192x192.png",
       tag: "streak-warning"
     });
   } catch (error) {

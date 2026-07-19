@@ -941,6 +941,7 @@ export const spawnEventQuests = async (quest_id, progress, user_id) => {
   await sendPushToSubscription(formattedSubscriptions, {
     title: "⚔️ New Event Quest Detected",
     body: "A limited-time quest has appeared. Complete it before the system closes it.",
+    icon: "/android-chrome-192x192.png",
     tag: "event-quest"
   });
 

@@ -233,6 +233,8 @@ const resetStreak = async (userId, oldHp, yesterday) => {
   await sendPushNotification(userId, {
     title: "💀 Streak Lost!",
     body: "Your streak has been reset. Complete quests daily to rebuild your progress.",
+    icon: "/android-chrome-192x192.png",
+    tag: "streak-reset"
   });
 
   // Send hp warning when new hp is less than 2
@@ -240,11 +242,15 @@ const resetStreak = async (userId, oldHp, yesterday) => {
     await sendPushNotification(userId, {
       title: "⚠️ Critical HP Warning!",
       body: "Your HP is critically low. Buy an HP Potion from the Shop to recover your HP.",
+      icon: "/android-chrome-192x192.png",
+      tag: "critical-hp"
     });
   } else if (newHp === 1) {
     await sendPushNotification(userId, {
       title: "⚠️ System Warning!",
       body: "Your HP is critically low. Another failure may cause severe progress penalties. Recover your HP immediately.",
+      icon: "/android-chrome-192x192.png",
+      tag: "last-hp"
     });
   }
 
