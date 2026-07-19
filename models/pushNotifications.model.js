@@ -76,6 +76,10 @@ export const getReminderTime = async (userId) => {
     [userId],
   );
 
+  if (rows.length === 0) {
+    return null;
+  }
+
   return rows[0].reminder_time;
 };
 
