@@ -1,22 +1,28 @@
-import { getAllNotificationsModel, deleteNotificationModel, readNotificationModel, readAllNotificationsModel, getHasReadModel } from "../models/notifications.model.js";
+import {
+  getAllNotificationsModel,
+  deleteNotificationModel,
+  readNotificationModel,
+  readAllNotificationsModel,
+  getHasReadModel,
+} from "../models/notifications.model.js";
 
 const getAllNotificationsService = async (userId) => {
-    const notifications = await getAllNotificationsModel(userId);
+  const notifications = await getAllNotificationsModel(userId);
 
-    return { notifications, message: "All notifications fetched successfully!" };
-}
+  return { notifications, message: "All notifications fetched successfully!" };
+};
 
 const getHasReadService = async (userId) => {
-    const hasUnread = await getHasReadModel(userId);
+  const hasUnread = await getHasReadModel(userId);
 
-    return { hasUnread };
-}
+  return { hasUnread };
+};
 
 const deleteNotificationService = async (n_id) => {
-    await deleteNotificationModel(n_id);
+  await deleteNotificationModel(n_id);
 
-    return { message: "Notification deleted successfully!" };
-}
+  return { message: "Notification deleted successfully!" };
+};
 
 const readNotificationService = async (un_id) => {
   const success = await readNotificationModel(un_id);
@@ -31,9 +37,9 @@ const readAllNotificationsService = async (user_id) => {
 };
 
 export {
-    getAllNotificationsService,
-    deleteNotificationService,
-    readNotificationService,
-    readAllNotificationsService,
-    getHasReadService
-}
+  getAllNotificationsService,
+  deleteNotificationService,
+  readNotificationService,
+  readAllNotificationsService,
+  getHasReadService,
+};

@@ -1,7 +1,10 @@
+import moment from "moment-timezone";
 import { TITLES } from "../config/titles.js";
 import db from "../db/mysqlConfig.js";
+import { sendPushNotification } from "../services/pushNotifications.service.js";
 import { unlockTitle } from "../services/title.service.js";
 import { throwErr } from "../utils/error.utils.js";
+import { getNextTrainingReminder } from "../utils/trainingSchedule.js";
 
 /**
  * Creates a new user and inserts default stats for the user
@@ -38,15 +41,19 @@ const createUser = async (
 };
 
 /**
- * Fetches all the users from database
+ * Fetches all the users from database whose hp is greater than 0
  *
  * @returns {Promise<Array<object>>} - An array of user objects
  */
-const fetchAllUsers = async () => {
+const fetchActiveUsersForQuestAssignment = async () => {
   const [users] = await db.query(`
     SELECT 
       u.user_id,
-      u.timezone
+      u.timezone,
+      s.recovery_last_used,
+      s.hp,
+      training_days,
+      penalty_last_applied
     FROM users u
     JOIN stats s
     ON u.user_id = s.user_id
@@ -77,12 +84,26 @@ const fetchUserByEmail = async (email) => {
  * @returns {Promise<object|null>} - A user object if found, otherwise null
  */
 const fetchUserById = async (id) => {
-  const [users] = await db.query(`SELECT * FROM users WHERE user_id = ?`, [id]);
+  const [users] = await db.query(
+    `
+    SELECT 
+      user_id,
+      email, 
+      username, 
+      fullname, 
+      timezone, 
+      avatar, 
+      username_changed_at, 
+      training_days,
+      training_days_last_changed
+    FROM users 
+    WHERE user_id = ?`,
+    [id],
+  );
 
   if (users.length === 0) throwErr("User not found", 404);
 
-  const { password, ...safeUser } = users[0];
-  return safeUser;
+  return users[0];
 };
 
 /**
@@ -92,9 +113,26 @@ const fetchUserById = async (id) => {
  * @returns {Promise<object|null>} - A stats object if found, otherwise null
  */
 const fetchUserStats = async (userId) => {
-  const [stats] = await db.query(`SELECT * FROM stats WHERE user_id = ?`, [
-    userId,
-  ]);
+  const [stats] = await db.query(
+    `
+  SELECT
+    stats_id,
+    xp,
+    total_xp,
+    level,
+    player_rank,
+    title_id,
+    hp,
+    streak,
+    highest_streak,
+    coins,
+    last_completed,
+    recovery_last_used
+  FROM stats
+  WHERE user_id = ?
+  `,
+    [userId],
+  );
 
   return stats[0];
 };
@@ -106,16 +144,17 @@ const fetchUserStats = async (userId) => {
  * @returns {Promise<object|null>} - A title object if found, otherwise null
  */
 const fetchUnlockedTitlesModel = async (userId) => {
-  const [titles] = await db.query(`
+  const [titles] = await db.query(
+    `
     SELECT title_id 
     FROM user_titles 
     WHERE user_id = ?
     ORDER BY unlocked_at DESC
-    `, [
-    userId,
-  ]);
+    `,
+    [userId],
+  );
 
-  titles.push({ title_id: "player"});
+  titles.push({ title_id: "player" });
 
   return titles;
 };
@@ -170,21 +209,44 @@ const updateStreak = async (userId) => {
 };
 
 /**
- * Reset streak of the user
+ * Resets the user's streak, decreases HP by 1 and records the penalty date.
  *
- * @param {int} userId - User's id
- * @returns {Promise<{success: boolean} | null>} - Object with success flag or null if no rows were affected
+ * @param {number} userId - User's ID.
+ * @param {number} oldHp - User's HP before the penalty.
+ * @param {string} yesterday - Date (YYYY-MM-DD) for which the penalty is applied.
+ * @returns {Promise<boolean|null>}
  */
-const resetStreak = async (userId) => {
+const resetStreak = async (userId, oldHp, yesterday) => {
   const [result] = await db.query(
     `UPDATE stats 
-      SET streak = 0, 
-      hp = hp - 1 
+    SET streak = 0, 
+      hp = hp - 1,
+      penalty_last_applied = ?
       WHERE user_id = ?`,
-    [userId],
+    [yesterday, userId],
   );
 
   if (result.affectedRows === 0) return null;
+
+  const newHp = oldHp - 1;
+
+  await sendPushNotification(userId, {
+    title: "💀 Streak Lost!",
+    body: "Your streak has been reset. Complete quests daily to rebuild your progress.",
+  });
+
+  // Send hp warning when new hp is less than 2
+  if (newHp === 2) {
+    await sendPushNotification(userId, {
+      title: "⚠️ Critical HP Warning!",
+      body: "Your HP is critically low. Buy an HP Potion from the Shop to recover your HP.",
+    });
+  } else if (newHp === 1) {
+    await sendPushNotification(userId, {
+      title: "⚠️ System Warning!",
+      body: "Your HP is critically low. Another failure may cause severe progress penalties. Recover your HP immediately.",
+    });
+  }
 
   return true;
 };
@@ -401,9 +463,90 @@ const updateUsernameModel = async (newUsername, userId) => {
   return result.affectedRows > 0;
 };
 
+
+/**
+ * Change Daily Reminder Time of the user
+ * @param {string} reminderTime - new reminderTime string
+ * @param {int} userId - id of the user
+ * @param {string} timezone - timezone of the user
+ *
+ * @returns {Promise<{Boolean}>} - True if rows update else false
+ */
+const updateTrainingPlanModel = async (trainingDays, userId, timezone) => {
+  if (!trainingDays?.length) return null;
+
+  const [usersRows] = await db.query(
+    `
+    SELECT training_days, training_days_last_changed 
+    FROM users
+    WHERE user_id = ?
+  `,
+    [userId]
+  );
+
+  const currentTrainingDays = usersRows[0].training_days;
+
+  if (
+    JSON.stringify(currentTrainingDays) ===
+    JSON.stringify(trainingDays)
+  ) {
+    return true;
+  }
+  const now = moment.utc();
+
+  const lastChanged = usersRows[0].training_days_last_changed
+    ? moment.utc(usersRows[0].training_days_last_changed)
+    : null;
+
+  if (lastChanged && now.diff(lastChanged, "days") < 7) {
+    throwErr("Training schedule can only be changed once every 7 days.", 400);
+  }
+
+  const [result] = await db.query(
+    `
+    UPDATE users
+    SET training_days = ?, training_days_last_changed = ?
+    WHERE user_id = ?
+  `,
+    [JSON.stringify(trainingDays), now.format("YYYY-MM-DD HH:mm:ss"), userId],
+  );
+
+  if (result.affectedRows === 0) return throwErr("No user found", 404);
+
+  const [rows] = await db.query(
+    `
+    SELECT reminder_time, notification_enabled
+    FROM notification_settings
+    WHERE user_id = ?
+  `,
+    [userId],
+  );
+
+  if (rows[0]?.notification_enabled) {
+    const now = moment.tz(timezone);
+
+    const nextReminder = getNextTrainingReminder(
+      now,
+      rows[0]?.reminder_time,
+      trainingDays,
+    );
+
+    await db.query(
+      `
+      UPDATE notification_settings
+      SET next_reminder_at = ?
+      WHERE user_id = ?
+      `,
+      [nextReminder.utc().format("YYYY-MM-DD HH:mm:ss"), userId],
+    );
+  }
+
+  return true;
+};
+
 export {
   createUser,
-  fetchAllUsers,
+  fetchActiveUsersForQuestAssignment,
   fetchUserByEmail,
   fetchUserById,
   fetchUserStats,
@@ -418,4 +561,5 @@ export {
   changeTitleModel,
   updateNameModel,
   updateUsernameModel,
+  updateTrainingPlanModel,
 };

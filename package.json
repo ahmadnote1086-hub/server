@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "3.2.1",
+  "version": "3.4.0",
   "description": "Solo leveling fitness tracker app",
   "license": "ISC",
   "author": "Zeeshan Ahmad",
@@ -20,6 +20,7 @@
     "jsonwebtoken": "^9.0.2",
     "moment-timezone": "^0.6.0",
     "mysql2": "^3.14.2",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "web-push": "^3.6.7"
   }
 }

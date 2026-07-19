@@ -11,6 +11,7 @@ import questsRoutes from './routes/quest.routes.js';
 import shopRoutes from './routes/shop.routes.js';
 import hunterRoutes from './routes/admin/hunters.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
+import pushNotificationsRoutes from './routes/pushNotifications.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import gumroadRoutes from './routes/gumroad.routes.js';
 import adminQuestsRoutes from './routes/admin/quests.routes.js';
@@ -23,6 +24,8 @@ import { adminMiddleware } from './middlewares/admin.middle.js';
 import './cron/assignDailyQuests.cron.js';
 import './cron/spawnEventQuests.cron.js';
 import './cron/cleanup.cron.js';
+import './cron/checkScheduledNotifications.cron.js';
+import './cron/checkStreakRisks.cron.js';
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -49,6 +52,7 @@ app.use('/profile', authMiddleware, profileRoutes);
 app.use('/quests', authMiddleware, questsRoutes);
 app.use('/shop', authMiddleware, shopRoutes);
 app.use('/notifications', authMiddleware, notificationsRoutes);
+app.use('/push-notifications', authMiddleware, pushNotificationsRoutes);
 app.use('/settings', authMiddleware, settingsRoutes);
 
 app.use('/admin/hunters', authMiddleware, adminMiddleware, hunterRoutes);

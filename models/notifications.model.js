@@ -83,5 +83,5 @@ export {
     readNotificationModel,
     readAllNotificationsModel,
     getHasReadModel,
-    createNotification
+    createNotification,
 }

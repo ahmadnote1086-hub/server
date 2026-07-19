@@ -62,7 +62,9 @@ export const purchaseItemModel = async (item_id, stats, timezone) => {
     .startOf("day")
     .format("YYYY-MM-DD");
 
-    const lastUsed = stats.recovery_last_used ? moment.tz(stats.recovery_last_used, timezone).format("YYYY-MM-DD") : null;
+    const lastUsed = stats.recovery_last_used
+      ? moment(stats.recovery_last_used).tz(timezone).format("YYYY-MM-DD")
+      : null;
     const isRecoveryActive = today === lastUsed; 
 
     if (isRecoveryActive) {

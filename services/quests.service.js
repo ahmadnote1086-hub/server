@@ -1,4 +1,4 @@
-import { completeQuestModel, getQuestsModel, getEventQuestsModel, updateStatsModel, assignDailyQuestsModel, getQuestsHistoryModel, completeAllQuestsForTodayModal, addCustomQuestModel, assignCustomQuestModel, removeCustomQuestModel, unAssignCustomQuestModel, updateEventProgressModel } from "../models/quests.model.js";
+import { completeQuestModel, getQuestsModel, getEventQuestsModel, updateStatsModel, getQuestsHistoryModel, completeAllQuestsForTodayModal, addCustomQuestModel, assignCustomQuestModel, removeCustomQuestModel, unAssignCustomQuestModel, updateEventProgressModel, assignMainQuestsModel, assignSideQuestsModel, assignCustomQuestsModel } from "../models/quests.model.js";
 import { updateStreak } from "../models/user.model.js";
 import { throwErr } from "../utils/error.utils.js";
 
@@ -60,13 +60,30 @@ export const completeAllQuestsForTodayService = async (userId, type, timezone) =
   return { success: true, message: `All ${type} quests are completed`, };
 };
 
-// Assign tasks to each user daily.
-export const assignDailyQuests = async (userId, timezone) => {
-  const success = await assignDailyQuestsModel(userId, timezone);
+// Assign main quests to each user daily.
+export const assignDailyMainQuests = async (userId, timezone) => {
+  const success = await assignMainQuestsModel(userId, timezone);
 
   if (!success) {
-    throw new Error('Quests not found!');
+    throw new Error('Main quests not found!');
   }
+
+  return { success: true };
+};
+
+// Assign main quests to each user daily.
+export const assignDailySideQuests = async (userId, timezone) => {
+  const success = await assignSideQuestsModel(userId, timezone);
+
+  if (!success) {
+    throw new Error('Side quests not found!');
+  }
+
+  return { success: true };
+};
+
+export const assignDailyCustomQuests = async (userId, timezone) => {
+  await assignCustomQuestsModel(userId, timezone);
 
   return { success: true };
 };

@@ -35,9 +35,9 @@ const deleteNotificationController = async (req, res) => {
 
 const readNotificationController = async (req, res) => {
     try {
-        const result = await readNotificationService(req.params.id); // argument: un_id
+        const result = await readNotificationService(req.params.id);
 
-        return res.json(result);;
+        return res.json(result);
     } catch (error) {
         console.log(error);
         res.status(error.status || 500).json(error);
@@ -48,9 +48,9 @@ const readAllNotificationsController = async (req, res) => {
     const id = req.user.id;
 
     try {
-        const result = await readAllNotificationsService(id); // argument: user_id
+        const result = await readAllNotificationsService(id); 
 
-        return res.json(result);;
+        return res.json(result);
     } catch (error) {
         console.log(error);
         res.status(error.status || 500).json(error);
@@ -62,5 +62,5 @@ export {
     deleteNotificationController,
     readNotificationController,
     readAllNotificationsController,
-    getHasReadController
+    getHasReadController,
 }

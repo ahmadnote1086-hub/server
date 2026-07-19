@@ -1,5 +1,5 @@
 import { createUser, fetchUserByEmail } from "../models/user.model.js";
-import { assignDailyQuestsModel } from "../models/quests.model.js";
+import { assignMainQuestsModel, assignSideQuestsModel } from "../models/quests.model.js";
 import { hashPassword, comparePassword } from "../utils/password.utils.js";
 import { generateUsername } from "../utils/username.utils.js";
 import { throwErr } from "../utils/error.utils.js";
@@ -16,7 +16,8 @@ export const registerService = async (email, fullName, password, timezone) => {
     timezone
   );
 
-  await assignDailyQuestsModel(user.id);
+  await assignMainQuestsModel(user.id, timezone);
+  await assignSideQuestsModel(user.id, timezone);
   return user;
 };
 

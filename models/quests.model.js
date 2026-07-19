@@ -5,6 +5,7 @@ import { createNotification } from "./notifications.model.js";
 import { getMaxReps } from "../utils/getMaxReps.js";
 import { unlockTitle } from "../services/title.service.js";
 import { getGlobalRankForUserModel } from "./user.model.js";
+import { sendPushToSubscription } from "../services/pushNotifications.service.js";
 
 /**
  * Fetch main, side and custom quests based on id of user
@@ -14,18 +15,20 @@ import { getGlobalRankForUserModel } from "./user.model.js";
  * @retur-ns {Promise<{ mainQuests: object[], sideQuests: object[] }>} - An object containing arrays of main and side quests.
  */
 export const getQuestsModel = async (userId, timezone) => {
+  const today = moment.tz(timezone).format("YYYY-MM-DD");
+  
   const [rows] = await db.query(
     `SELECT q.*, uq.user_quest_id, uq.created_at, uq.is_completed, uq.total_reps, q.created_at AS coolDown
       FROM quests AS q  
       JOIN user_quests AS uq
       ON q.quest_id = uq.quest_id
       WHERE uq.user_id = ? 
-        AND DATE(uq.created_at) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))
+        AND DATE(uq.created_at) = ?
         AND (
           q.type IN ('main', 'side')
           OR (q.type = 'custom' AND q.owner_user_id = ?)
         )`,
-    [userId, timezone, userId],
+    [userId, today, userId],
   );
 
   const mainQuests = rows.filter((quest) => quest.type === "main");
@@ -44,7 +47,8 @@ export const getQuestsModel = async (userId, timezone) => {
  * @returns {Promise<{ eventQuests: Object[] }>} - An object containing arrays of main and side quests.
  */
 export const getEventQuestsModel = async (userId) => {
-  const [rows] = await db.query(`
+  const [rows] = await db.query(
+    `
     SELECT *, ge.ends_at AS ends_at
     FROM user_event_progress uep
     JOIN global_events ge
@@ -77,8 +81,8 @@ export const getQuestsModelByDate = async (userId, timezone, date) => {
         JOIN user_quests AS uq
         ON q.quest_id = uq.quest_id
         WHERE uq.user_id = ? 
-            AND DATE(uq.created_at) = DATE(CONVERT_TZ(?, 'UTC', ?))`,
-    [userId, date, timezone],
+            AND DATE(uq.created_at) = ?`,
+    [userId, date],
   );
 
   const mainQuests = rows.filter((quest) => quest.type === "main");
@@ -98,7 +102,7 @@ export const getAllQuestsModel = async () => {
       FROM users as u
       LEFT JOIN user_quests as uq
       ON u.user_id = uq.user_id
-      WHERE DATE(CONVERT_TZ(uq.created_at, 'UTC', u.timezone)) = CURDATE()`,
+      WHERE DATE(uq.created_at) = CURDATE()`,
   );
 
   const mainQuests = rows.filter((quest) => quest.type === "main");
@@ -115,17 +119,20 @@ export const getAllQuestsModel = async () => {
  *
  * @returns {Promise<{ questHistory: object }>} - An object containing list of quests history.
  */
-export const getQuestsHistoryModel = async (userId) => {
+export const getQuestsHistoryModel = async (userId, timezone) => {
+  const today = moment.tz(timezone).startOf("day");
+  const thirtyDaysAgo = today.clone().subtract(30, "days");
+
   const [rows] = await db.query(
     `SELECT *, DATE_FORMAT(uq.created_at, '%Y-%m-%d') AS created_date
       FROM quests as q
       JOIN user_quests as uq
       ON q.quest_id = uq.quest_id
       WHERE uq.user_id = ?
-        AND Date(uq.created_at) >= CURDATE() - INTERVAL 30 DAY
-        AND Date(uq.created_at) < CURDATE()
+        AND Date(uq.created_at) >= ?
+        AND Date(uq.created_at) < ?
       ORDER BY created_date DESC`,
-    [userId],
+    [userId, thirtyDaysAgo.format("YYYY-MM-DD"), today.format("YYYY-MM-DD")],
   );
 
   const questHistory = rows.reduce((acc, row) => {
@@ -319,15 +326,21 @@ export const updateStatsModel = async (
 };
 
 /**
- * Assigns main and side quests
+ * Assigns quests of type main or side quests
  *
  * @param {int} userId - id of a specific user
  * @param {string} timezone - timezone of the user
  * @returns {Promise<boolean>} true/false
  */
-export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
+export const assignQuestsByType = async (userId, timezone, type) => {
+  if (!["main", "side"].includes(type)) {
+    return false;
+  }
+
   const [quests] = await db.query(
-    `SELECT * FROM quests WHERE type IN ('main', 'side')`,
+    `SELECT quest_id, increment, base_amount
+     FROM quests WHERE type = ?`,
+    [type],
   );
 
   if (!quests || quests.length === 0) {
@@ -352,7 +365,7 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
         AND uq.quest_id = ? 
       ORDER 
         BY uq.created_at DESC LIMIT 1`,
-      [userId, quest.quest_id]
+      [userId, quest.quest_id],
     );
 
     let totalReps;
@@ -379,25 +392,48 @@ export const assignDailyQuestsModel = async (userId, timezone = "UTC") => {
 };
 
 /**
+ * Assigns main quests
+ *
+ * @param {int} userId - id of a specific user
+ * @param {string} timezone - timezone of the user
+ * @returns {Promise<boolean>} true/false
+ */
+export const assignMainQuestsModel = (userId, timezone = "UTC") => {
+  return assignQuestsByType(userId, timezone, "main");
+};
+
+/**
+ * Assigns side quests
+ *
+ * @param {int} userId - id of a specific user
+ * @param {string} timezone - timezone of the user
+ * @returns {Promise<boolean>} true/false
+ */
+export const assignSideQuestsModel = (userId, timezone = "UTC") => {
+  return assignQuestsByType(userId, timezone, "side");
+};
+
+/**
  * Assigns custom quests
  *
  * @param {int} userId - id of a specific user
  * @param {string} timezone - timezone of the user
  * @returns {Promise<boolean>} true/false
  */
-export const assignDailyCustomQuestsModel = async (
+export const assignCustomQuestsModel = async (
   userId,
   timezone = "UTC",
 ) => {
   const [quests] = await db.query(
-    `SELECT * FROM quests 
-      WHERE type IN ('custom') 
-      AND owner_user_id = ?`,
+    `SELECT quest_id, reps 
+    FROM quests 
+    WHERE type = 'custom'
+    AND owner_user_id = ?`,
     [userId],
   );
 
   if (!quests || quests.length === 0) {
-    return false;
+    return true;
   }
 
   const assignedAt = moment
@@ -426,19 +462,22 @@ export const assignDailyCustomQuestsModel = async (
 export const checkQuestsAssignedToday = async (userId, timezone) => {
   const [rows] = await db.query(
     `
-      SELECT 1
+      SELECT q.type
       FROM user_quests uq
       JOIN quests q
       ON uq.quest_id = q.quest_id
       WHERE uq.user_id = ?
-      AND q.type = 'main'
+      AND q.type IN ('main', 'side', 'custom')
       AND DATE(CONVERT_TZ(uq.created_at, 'UTC', ?)) = DATE(CONVERT_TZ(UTC_TIMESTAMP(), 'UTC', ?))
-      LIMIT 1
     `,
     [userId, timezone, timezone],
   );
 
-  return rows.length > 0;
+  return {
+    mainQuestAssigned: rows.some((q) => q.type === "main"),
+    sideQuestAssigned: rows.some((q) => q.type === "side"),
+    customQuestAssigned: rows.some((q) => q.type === "custom"),
+  };
 };
 
 /**
@@ -491,7 +530,7 @@ export const newCustomQuestModel = async (questInfo) => {
 
     if (result.affectedRows === 0) throwErr("Failed to insert quest", 500);
 
-    const [users] = await db.query(`SELECT * FROM users`);
+    const [users] = await db.query(`SELECT user_id FROM users`);
     for (let user of users) {
       await db.query(
         `INSERT INTO user_quests (user_id, quest_id) VALUES (?, ?)`,
@@ -793,14 +832,18 @@ export const spawnEventQuests = async (quest_id, progress, user_id) => {
     SELECT quest_id
     FROM global_events 
     WHERE ends_at > NOW()
-    FOR UPDATE
   `);
-  
+
   // If event quests are assigned at the moment then don't activate anymore
   if (activeEventQuests.length >= 2) return null;
 
   const [allEventQuests] = await db.query(`
-    SELECT * FROM quests 
+    SELECT 
+      quest_id,
+      xp_gain,
+      base_amount,
+      reps
+    FROM quests 
     WHERE type = 'event'
   `);
 
@@ -808,12 +851,11 @@ export const spawnEventQuests = async (quest_id, progress, user_id) => {
   const availableQuests = allEventQuests.filter(
     (quest) => !activeEventQuests.some((q) => q.quest_id === quest.quest_id),
   );
-  
+
   if (availableQuests.length === 0) return null;
-  
+
   const randomIndex = Math.floor(Math.random() * availableQuests.length);
   const selectedQuest = availableQuests[randomIndex];
-  
 
   // Longer duration = Higher difficult
   const difficulty =
@@ -843,7 +885,11 @@ export const spawnEventQuests = async (quest_id, progress, user_id) => {
     WHERE s.hp > 0
   `);
 
-  const values = users.map((user) => [user.user_id, result.insertId, selectedQuest.reps]);
+  const values = users.map((user) => [
+    user.user_id,
+    result.insertId,
+    selectedQuest.reps,
+  ]);
 
   await db.query(
     `
@@ -855,33 +901,48 @@ export const spawnEventQuests = async (quest_id, progress, user_id) => {
   );
 
   const [notifResult] = await db.query(
-      `INSERT INTO
-      notification
-      (title, message, type, reference_type, reference_id) 
-      VALUES (?, ?, ?, ?, ?)`,
-      [
-        'New event quest added',
-        "New limited time quest added to events. Complete it before it expires.", 
-        'quests', 
-        'quests', 
-        selectedQuest.quest_id
-      ],
-    );
+    `INSERT INTO
+    notification
+    (title, message, type, reference_type, reference_id) 
+    VALUES (?, ?, ?, ?, ?)`,
+    [
+      "New event quest added",
+      "New limited time quest added to events. Complete it before it expires.",
+      "quests",
+      "quests",
+      selectedQuest.quest_id,
+    ],
+  );
 
-    const noti_id = notifResult.insertId;
+  const noti_id = notifResult.insertId;
 
-    const userNotiValues = users.map((u) => [
-      u.user_id,
-      noti_id
-    ]);
-    
-    await db.query(
-      `INSERT INTO
-      user_notification
-      (user_id, n_id) 
-      VALUES ?`,
-      [userNotiValues],
-    );
+  const userNotiValues = users.map((u) => [u.user_id, noti_id]);
+
+  await db.query(
+    `INSERT INTO
+    user_notification
+    (user_id, n_id) 
+    VALUES ?`,
+    [userNotiValues],
+  );
+
+  const [subscriptions] = await db.query(
+    `SELECT endpoint, p256dh, auth FROM push_subscriptions`,
+  );
+
+  const formattedSubscriptions = subscriptions.map((sub) => ({
+    endpoint: sub.endpoint,
+    keys: {
+      p256dh: sub.p256dh,
+      auth: sub.auth,
+    },
+  }));
+
+  await sendPushToSubscription(formattedSubscriptions, {
+    title: "⚔️ New Event Quest Detected",
+    body: "A limited-time quest has appeared. Complete it before the system closes it.",
+    tag: "event-quest"
+  });
 
   return {
     ge_id: result.insertId,
