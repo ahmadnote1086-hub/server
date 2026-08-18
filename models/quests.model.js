@@ -16,7 +16,7 @@ import { sendPushToSubscription } from "../services/pushNotifications.service.js
  */
 export const getQuestsModel = async (userId, timezone) => {
   const today = moment.tz(timezone).format("YYYY-MM-DD");
-  
+
   const [rows] = await db.query(
     `SELECT q.*, uq.user_quest_id, uq.created_at, uq.is_completed, uq.total_reps, q.created_at AS coolDown
       FROM quests AS q  
@@ -264,19 +264,32 @@ export const updateStatsModel = async (
   coinReward,
 ) => {
   const [statsRows] = await db.query(
-    `SELECT * FROM stats WHERE stats.user_id = ?`,
+    `SELECT xp, coins, level, player_rank, xp_boost_expires_at
+    FROM stats
+    WHERE user_id = ?`,
     [userId],
   );
 
   if (statsRows.length === 0) throwErr("No stats found for user", 404);
 
-  let { xp: currentXp, coins, level, player_rank: rank } = statsRows[0];
-  let newXp = currentXp + xpReward + (level - 1) * 2;
+  let {
+    xp: currentXp,
+    coins,
+    level,
+    player_rank: rank,
+    xp_boost_expires_at,
+  } = statsRows[0];
+
+  const isXpBoostActive = moment.utc().isBefore(moment.utc(xp_boost_expires_at));
+
+  // If xp boost is active, double the xp reward else use the normal xp reward
+  const boostedXpReward = isXpBoostActive ? xpReward * 2 : xpReward;
+
+  let newXp = currentXp + boostedXpReward + (level - 1) * 2;
   let totalCoins = coins + coinReward + (level - 1) * (xpReward > 0 ? 5 : 3);
   let requiredXP = level * 100 + (level - 1) * 50;
 
   while (newXp >= requiredXP) {
-    const prevLevel = level;
     level++;
     newXp -= requiredXP;
     requiredXP = level * 100 + (level - 1) * 50;
@@ -303,7 +316,7 @@ export const updateStatsModel = async (
           player_rank = ?,
           last_completed = ?
           WHERE user_id = ?`,
-    [newXp, level, xpReward, totalCoins, rank, userLocalTime, userId],
+    [newXp, level, boostedXpReward, totalCoins, rank, userLocalTime, userId],
   );
 
   // Check if leaderboard title is achievable
@@ -420,10 +433,7 @@ export const assignSideQuestsModel = (userId, timezone = "UTC") => {
  * @param {string} timezone - timezone of the user
  * @returns {Promise<boolean>} true/false
  */
-export const assignCustomQuestsModel = async (
-  userId,
-  timezone = "UTC",
-) => {
+export const assignCustomQuestsModel = async (userId, timezone = "UTC") => {
   const [quests] = await db.query(
     `SELECT quest_id, reps 
     FROM quests 
@@ -942,7 +952,7 @@ export const spawnEventQuests = async (quest_id, progress, user_id) => {
     title: "⚔️ New Event Quest Detected",
     body: "A limited-time quest has appeared. Complete it before the system closes it.",
     icon: "/android-chrome-192x192.png",
-    tag: "event-quest"
+    tag: "event-quest",
   });
 
   return {

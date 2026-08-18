@@ -128,7 +128,8 @@ const fetchUserStats = async (userId) => {
     highest_streak,
     coins,
     last_completed,
-    recovery_last_used
+    recovery_last_used,
+    xp_boost_expires_at
   FROM stats
   WHERE user_id = ?
   `,

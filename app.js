@@ -13,6 +13,7 @@ import hunterRoutes from "./routes/admin/hunters.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
 import pushNotificationsRoutes from "./routes/pushNotifications.routes.js";
 import settingsRoutes from "./routes/settings.routes.js";
+import analyticsRoutes from "./routes/analytics.routes.js";
 import gumroadRoutes from "./routes/gumroad.routes.js";
 import adminQuestsRoutes from "./routes/admin/quests.routes.js";
 import adminReviewRoutes from "./routes/admin/review.routes.js";
@@ -54,6 +55,7 @@ app.use("/shop", authMiddleware, shopRoutes);
 app.use("/notifications", authMiddleware, notificationsRoutes);
 app.use("/push-notifications", authMiddleware, pushNotificationsRoutes);
 app.use("/settings", authMiddleware, settingsRoutes);
+app.use("/analytics", authMiddleware, analyticsRoutes);
 
 app.use("/admin/hunters", authMiddleware, adminMiddleware, hunterRoutes);
 app.use("/admin/quests", authMiddleware, adminMiddleware, adminQuestsRoutes);
