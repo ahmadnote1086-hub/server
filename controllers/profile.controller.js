@@ -7,7 +7,8 @@ import {
   changeAvatarService,
   changeTitleService,
   fetchUnlockedTitlesService,
-  getReminderTimeService
+  getReminderTimeService,
+  getTotalHuntersService
 } from "../services/profile.service.js";
 
 export const getUserProfileController = async (req, res) => {
@@ -19,6 +20,20 @@ export const getUserProfileController = async (req, res) => {
       message: result.message,
       profile: result.profile,
       quests: result.quests,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(error.status || 500).json(error);
+  }
+};
+
+export const getTotalHuntersController = async (req, res) => {
+  try {
+    const result = await getTotalHuntersService();
+
+    res.status(200).json({
+      message: result.message,
+      totalHunters: result.totalHunters,
     });
   } catch (error) {
     console.log(error);

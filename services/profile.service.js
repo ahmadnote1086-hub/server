@@ -8,6 +8,7 @@ import {
   changeAvatarModel,
   changeTitleModel,
   fetchUnlockedTitlesModel,
+  getTotalHuntersModel
 } from "../models/user.model.js";
 import {
   assignMainQuestsModel,
@@ -89,9 +90,20 @@ export const fetchUnlockedTitlesService = async (userId) => {
   const titles = await fetchUnlockedTitlesModel(userId);
 
   return {
-    succss: true,
+    success: true,
     message: "Unlocked Titles fetched successfully",
     titles,
+  };
+};
+
+// Get total Hunters
+export const getTotalHuntersService = async () => {
+  const totalHunters = await getTotalHuntersModel();
+
+  return {
+    success: true,
+    message: "Total Hunters fetched successfully",
+    totalHunters,
   };
 };
 

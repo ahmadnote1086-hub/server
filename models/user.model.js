@@ -129,7 +129,8 @@ const fetchUserStats = async (userId) => {
     coins,
     last_completed,
     recovery_last_used,
-    xp_boost_expires_at
+    xp_boost_expires_at,
+    created_at
   FROM stats
   WHERE user_id = ?
   `,
@@ -159,6 +160,22 @@ const fetchUnlockedTitlesModel = async (userId) => {
   titles.push({ title_id: "player" });
 
   return titles;
+};
+
+/**
+ * Fetches the total number of hunters
+ *
+ * @returns {Promise<number>} - The total number of hunters
+ */
+const getTotalHuntersModel = async () => {
+  const [result] = await db.query(
+    `
+    SELECT COUNT(*) as total_hunters
+    FROM users
+    `
+  );
+
+  return result[0].total_hunters;
 };
 
 /**
@@ -236,7 +253,7 @@ const resetStreak = async (userId, oldHp, yesterday) => {
     title: "💀 Streak Lost!",
     body: "Your streak has been reset. Complete quests daily to rebuild your progress.",
     icon: "/android-chrome-192x192.png",
-    tag: "streak-reset"
+    tag: "streak-reset",
   });
 
   // Send hp warning when new hp is less than 2
@@ -245,14 +262,14 @@ const resetStreak = async (userId, oldHp, yesterday) => {
       title: "⚠️ Critical HP Warning!",
       body: "Your HP is critically low. Buy an HP Potion from the Shop to recover your HP.",
       icon: "/android-chrome-192x192.png",
-      tag: "critical-hp"
+      tag: "critical-hp",
     });
   } else if (newHp === 1) {
     await sendPushNotification(userId, {
       title: "⚠️ System Warning!",
       body: "Your HP is critically low. Another failure may cause severe progress penalties. Recover your HP immediately.",
       icon: "/android-chrome-192x192.png",
-      tag: "last-hp"
+      tag: "last-hp",
     });
   }
 
@@ -471,7 +488,6 @@ const updateUsernameModel = async (newUsername, userId) => {
   return result.affectedRows > 0;
 };
 
-
 /**
  * Change Daily Reminder Time of the user
  * @param {string} reminderTime - new reminderTime string
@@ -489,15 +505,12 @@ const updateTrainingPlanModel = async (trainingDays, userId, timezone) => {
     FROM users
     WHERE user_id = ?
   `,
-    [userId]
+    [userId],
   );
 
   const currentTrainingDays = usersRows[0].training_days;
 
-  if (
-    JSON.stringify(currentTrainingDays) ===
-    JSON.stringify(trainingDays)
-  ) {
+  if (JSON.stringify(currentTrainingDays) === JSON.stringify(trainingDays)) {
     return true;
   }
   const now = moment.utc();
@@ -559,6 +572,7 @@ export {
   fetchUserById,
   fetchUserStats,
   fetchUnlockedTitlesModel,
+  getTotalHuntersModel,
   updateName,
   resetStreak,
   getGlobalRankingModel,
